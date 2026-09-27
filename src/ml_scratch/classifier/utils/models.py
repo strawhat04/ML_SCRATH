@@ -20,3 +20,5 @@ class Node:
 class bestsplitnode:
     value : float
     gini : float
+
+
