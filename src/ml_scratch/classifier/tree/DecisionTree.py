@@ -7,10 +7,11 @@ from ml_scratch.classifier.criterion.geni import gini
 
 class DecisionTreeClassifier:
 
-    def __init__(self, max_depth: int, min_sample_split: int, min_sample_leaf: int) -> None:
+    def __init__(self, max_depth: int, min_sample_split: int, min_sample_leaf: int, max_features : None | int) -> None:
         self.max_depth = max_depth
         self.min_sample_split = min_sample_split
         self.min_sample_leaf = min_sample_leaf
+        self.max_features = max_features
 
         self.xtrain = None
         self.ytrain = None
@@ -88,15 +89,32 @@ class DecisionTreeClassifier:
                 right=None
             )
 
-        feature_best_node = np.empty(X.shape[1], dtype=object)
-        features_best_gini = np.empty(X.shape[1])
 
-        for feature_index in range(X.shape[1]):
-            bestfit = BestFitter(X[:, feature_index], y, self.min_sample_leaf)
-            feature_best_node[feature_index] = bestfit.find_best_split()
-            features_best_gini[feature_index] = feature_best_node[feature_index].gini
+        if self.max_features is None or self.max_features > X.shape[1]:
+            logger.info(f"max_features is None or exceeds feature count; using all {X.shape[1]} features for split evaluation.")
+            max_features = X.shape[1]
+        else:
+            max_features = self.max_features
+            logger.info(f"Selecting {max_features} features randomly for split evaluation at depth {depth}.")
 
-        best_node, feature_index = self._get_best_feature_node(feature_best_node, features_best_gini)
+        feature_best_node = np.empty(max_features, dtype=object)
+        features_best_gini = np.empty(max_features)
+
+        allowed_features = np.random.choice(X.shape[1], size=max_features, replace=False)
+        logger.info(
+           f"Depth {depth}: selected features {allowed_features}"
+        )
+
+        for idx, feat_idx in enumerate(allowed_features):
+            bestfit = BestFitter(X[:, feat_idx], y, self.min_sample_leaf)
+            feature_best_node[idx] = bestfit.find_best_split()
+            features_best_gini[idx] = feature_best_node[idx].gini
+
+        best_node, local_feat_index = self._get_best_feature_node(feature_best_node, features_best_gini)
+        feature_index = allowed_features[local_feat_index] if best_node is not None else None
+
+        if best_node is not None:
+            logger.info(f"{indent} Depth {depth}: Best split found on feature {feature_index} with threshold {best_node.value:.4f} and Gini {best_node.gini:.4f}")
 
         if best_node is None:
             leaf_value = self._get_prediction(y)
@@ -275,3 +293,33 @@ class DecisionTreeClassifier:
 
         print(f"{indent}└─ False:")
         DecisionTreeClassifier.print_tree(node.right, feature_names, depth + 1)
+
+    def get_tree_structure(self) -> dict:
+        """
+        Retrieve the structure of the decision tree as a nested dictionary.
+
+        Returns:
+            dict: A nested dictionary representing the tree structure.
+        """
+        if self.root is None:
+            logger.warning("No tree has been fitted yet. Returning empty structure.")
+            return {}
+
+        def _node_to_dict(node: Node) -> dict:
+            if node is None:
+                return None
+
+            node_dict = {
+                "id": node.id,
+                "feature_index": node.feature_index,
+                "split_threshold": node.split_threshold,
+                "gini": node.gini,
+                "n_samples": node.n_samples,
+                "prediction": node.prediction,
+                "left": _node_to_dict(node.left),
+                "right": _node_to_dict(node.right)
+            }
+            return node_dict
+
+        logger.info("Retrieving structure of the decision tree.")
+        return _node_to_dict(self.root)
