@@ -43,6 +43,9 @@ class DecisionTreeClassifier:
             f"Max Depth: {self.max_depth}"
         )
 
+        self.xtrain = X
+        self.ytrain = y
+
         self.root = self._build_tree(X, y, depth=0)
         
         logger.success("Tree fitting completed successfully!")
@@ -323,3 +326,45 @@ class DecisionTreeClassifier:
 
         logger.info("Retrieving structure of the decision tree.")
         return _node_to_dict(self.root)
+
+    def feature_importance(self) -> np.ndarray:
+        """
+        Calculate the feature importance based on the Gini impurity reduction.
+
+        Returns:
+            np.ndarray: An array of feature importance scores, where each score
+                        corresponds to a feature index.
+        """
+        if self.root is None or self.xtrain is None :
+            logger.warning("No tree has been fitted yet. Returning empty feature importance.")
+            return np.array([])
+
+        importance_scores = np.zeros(self.xtrain.shape[1])
+        self._accumulate_importance(self.root, importance_scores)
+
+        return importance_scores 
+    
+    def _accumulate_importance(self, node: Node, importance_scores : np.ndarray, depth : int = 0) -> None:
+        if node is None:
+            return None
+
+        if node.left is None and node.right is None:
+            return None
+    
+        feature_idx = node.feature_index
+        n_samples = node.n_samples
+        parent_gini = node.gini
+
+        child_gini = node.left.gini * node.left.n_samples + node.right.gini * node.right.n_samples
+        gini_reduction = parent_gini * n_samples - child_gini
+
+        logger.debug(
+            f"[Depth {depth}] Feature {feature_idx} | Gini Reduction: {gini_reduction:.4f} | "
+            f"Samples: {n_samples} | Parent Gini: {parent_gini:.4f} | "
+            f"Left Gini: {node.left.gini:.4f}, Right Gini: {node.right.gini:.4f}"
+        )
+
+        importance_scores[feature_idx] += gini_reduction
+
+        self._accumulate_importance(node.left, importance_scores, depth + 1)
+        self._accumulate_importance(node.right, importance_scores, depth + 1)

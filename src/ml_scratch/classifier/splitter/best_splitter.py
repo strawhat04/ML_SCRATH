@@ -75,6 +75,11 @@ class BestFitter:
         """
         Find the minimum gini score and corresponding node split.
         """
+
+        if candidate_gini.size == 0 or np.all(np.isinf(candidate_gini)):
+            logger.warning("No valid splits found. All candidate splits were invalid or resulted in infinite Gini.")
+            return bestsplitnode(gini=np.inf, value=np.nan)
+
         min_idx = candidate_gini.argmin()
         min_gini = candidate_gini[min_idx].item()
         node_value = candidate_node[min_idx].item()

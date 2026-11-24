@@ -6,22 +6,24 @@ from ml_scratch.classifier.utils.models import Node
 from ml_scratch.classifier.tree.DecisionTree import DecisionTreeClassifier
 
 @dataclass
-class IndvidualTree:
-    trees : Node | None = None 
+class IndividualTree:
+    tree : Node | None = None 
     model : DecisionTreeClassifier | None = None
     oob_index : np.ndarray | None = None
 
 
 @dataclass
-class RandomForest:
+class RandomForestClassifier:
 
     n_estimators: int = 1
     max_depth: int = 5
     min_sample_leaf: int = 1
     min_sample_split: int = 2
     max_features: int | None = None
-    random_trees: list[IndvidualTree] = field(default_factory=list)
+    random_trees: list[IndividualTree] = field(default_factory=list)
     oob_score_: float | None = None
+
+    num_features: int  = 0
 
     def _bootstrap_sample(self, n_samples: int) -> np.ndarray:
         random_idx = np.random.randint(0, n_samples, n_samples)
@@ -36,6 +38,7 @@ class RandomForest:
         if len(X_arr) != len(y_arr):
             raise ValueError("X and y must contain the same number of observations")
 
+        self.num_features = X_arr.shape[1]
         n_samples = len(y_arr)
         self.random_trees = []
         oob_votes: list[list] = [[] for _ in range(n_samples)]
@@ -61,6 +64,7 @@ class RandomForest:
                     oob_votes[idx].append(pred)
 
             self.random_trees.append(IndividualTree(tree=tree_root, model=model))
+            logger.debug(f"Tree_{i} fitted and appending | details {IndividualTree(tree=tree_root, model=model)}")
 
         self.oob_score_ = self._calculate_forest_oob(y_arr, oob_votes)
         logger.info(f"Forest fitting complete | OOB Score: {self.oob_score_:.4f}")
@@ -113,5 +117,18 @@ class RandomForest:
             return 0.0
 
         return float(np.mean(y_true[evaluated_indices] == np.array(final_preds)))
+
+    def feature_importance(self) -> np.ndarray:
+        logger.info("Calculating feature importance across all trees in the Random Forest")
+        if not self.random_trees:
+            logger.warning("No trees have been fitted yet. Returning empty feature importance.")
+            return np.array([])
+
+        feature_importances = np.zeros(self.num_features)
+        for idx, tree in enumerate(self.random_trees):
+            feature_importances += tree.model.feature_importance()
+            logger.debug(f"Adding feature importance from tree {idx} - Current cumulative importance: {feature_importances}")
+
+        return feature_importances / feature_importances.sum()  # Normalize to sum to 1
 
         
